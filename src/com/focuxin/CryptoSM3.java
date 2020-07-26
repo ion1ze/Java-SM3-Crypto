@@ -5,7 +5,7 @@ import java.util.Arrays;
 public class CryptoSM3 {
 
     /**
-     * SM3摘要签名方法
+     * SM3算法
      *
      * @param message 消息
      * @return 结果
@@ -13,6 +13,38 @@ public class CryptoSM3 {
     public static byte[] hash(byte[] message) {
         byte[] paddedMsg = messagePadding(message); //消息填充
         return iterativeCompression(paddedMsg); //迭代压缩
+    }
+
+    /**
+     * HmacSM3算法
+     *
+     * @param message 消息
+     * @param key     秘钥
+     * @return 结果
+     */
+    public static byte[] createHmac(byte[] message, byte[] key) {
+        final int LENGTH = 64;
+        byte[] actualKey;
+        int zeroLength = LENGTH - key.length;
+        byte[] zero = new byte[zeroLength];
+        for (int i = 0; i < zeroLength; i++) {
+            zero[i] = (byte) 0x00;
+        }
+        if (key.length > 64) {
+            actualKey = CryptoSM3.hash(key);
+        } else {
+            actualKey = bytesMerge(key, zero);
+        }
+        byte[] iPadXOR = new byte[LENGTH];
+        byte[] oPadXOR = new byte[LENGTH];
+        for (int i = 0; i < LENGTH; i++) {
+            iPadXOR[i] = (byte) (actualKey[i] ^ 0x36);
+            oPadXOR[i] = (byte) (actualKey[i] ^ 0x5c);
+        }
+        byte[] firstMerge = bytesMerge(iPadXOR, message);
+        byte[] firstHash = CryptoSM3.hash(firstMerge);
+        byte[] secondMerge = bytesMerge(oPadXOR, firstHash);
+        return CryptoSM3.hash(secondMerge);
     }
 
     /**
