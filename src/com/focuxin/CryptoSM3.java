@@ -3,40 +3,51 @@ package com.focuxin;
 import java.util.Arrays;
 
 public class CryptoSM3 {
-    private final byte[] message;
-    private byte[] paddedMessage;
-    private byte[] sm3Result;
 
-    public CryptoSM3(byte[] message) {
-        this.message = message;
-        messagePadding();
-        iterativeCompression();
+    /**
+     * SM3摘要签名方法
+     *
+     * @param message 消息
+     * @return 结果
+     */
+    public static byte[] hash(byte[] message) {
+        byte[] paddedMsg = messagePadding(message); //消息填充
+        return iterativeCompression(paddedMsg); //迭代压缩
     }
 
-    public String hex() {
-        return bytesToHex(sm3Result);
-    }
-
-    private void messagePadding() {
-        byte[] msg = message;
-        long keyLength = msg.length;//消息字节长度
-        final byte[] BIT = {(byte) 0x80};//消息末尾补的1个比特，这里补一个128（1000 0000）
-        int outKeyLength = (int) (keyLength % 64);//消息达到64字节所需要的字节
-        int zeroLength = (outKeyLength < 55) ? (55 - outKeyLength) : (55 - outKeyLength + 64);//补0的长度，如果长度小于55字节(64字节-8个字节的消息长度的二进制表示-1个字节的比特1)
-        byte[] binaryMessageLength = longToBytes(keyLength * 8);//消息比特长度的二进制表示
-        byte[] zero = new byte[zeroLength];//填充0
+    /**
+     * 消息填充
+     * 把消息填充到512比特倍数的消息
+     *
+     * @param msg 消息
+     * @return 512比特倍数的消息
+     */
+    private static byte[] messagePadding(byte[] msg) {
+        long keyLength = msg.length;
+        final byte[] BIT = {(byte) 0x80};
+        int outKeyLength = (int) (keyLength % 64);
+        int zeroLength = (outKeyLength < 55) ? (55 - outKeyLength) : (55 - outKeyLength + 64);
+        byte[] binaryMessageLength = longToBytes(keyLength * 8);
+        byte[] zero = new byte[zeroLength];
         for (int i = 0; i < zeroLength; i++) {
             zero[i] = (byte) 0x00;
         }
-        paddedMessage = bytesMerge(bytesMerge(bytesMerge(msg, BIT), zero), binaryMessageLength);
+        return bytesMerge(bytesMerge(bytesMerge(msg, BIT), zero), binaryMessageLength);
     }
 
-    private int[][] extendMessage(int[] msg) {
+    /**
+     * 消息扩展
+     * 消息分组扩展成132个字
+     *
+     * @param word 字消息分组
+     * @return 扩展后的字分组
+     */
+    private static int[][] extendMessage(int[] word) {
         int[][] result = new int[2][];
         int[] w = new int[68];
         int[] w1 = new int[64];
-        for (int i = 0; i < msg.length; i++) {
-            w[i] = msg[i];
+        for (int i = 0; i < word.length; i++) {
+            w[i] = word[i];
         }
         for (int j = 16; j <= 67; j++) {
             w[j] = P1(w[j - 16] ^ w[j - 9] ^ CircleLeftShift(w[j - 3], 15)) ^ CircleLeftShift(w[j - 13], 7) ^ w[j - 6];
@@ -49,8 +60,14 @@ public class CryptoSM3 {
         return result;
     }
 
-    private void iterativeCompression() {
-        byte[] paddedMsg = paddedMessage;
+    /**
+     * 迭代压缩
+     * 把填充后的消息按512比特分组,然后按照文档给的方式压缩迭代
+     *
+     * @param paddedMsg 填充后的消息
+     * @return 摘要结果
+     */
+    private static byte[] iterativeCompression(byte[] paddedMsg) {
         int[] word = new int[16];
         int n = (paddedMsg.length) / 64;
         int[] VI = {0x7380166f, 0x4914b2b9, 0x172442d7, 0xda8a0600, 0xa96f30bc, 0x163138aa, 0xe38dee4d, 0xb0fb0e4e};
@@ -59,7 +76,7 @@ public class CryptoSM3 {
             try {
                 byte[] bytes = Arrays.copyOfRange(paddedMsg, 64 * i, 64 * (i + 1));
                 for (int j = 0; j < 16; j++) {
-                    word[j] = bytesToInt(bytes, j * 4);
+                    word[j] = bytesToWord(bytes, j * 4);
                 }
                 VI = CF(VI, word);
                 VX = VI;
@@ -67,11 +84,16 @@ public class CryptoSM3 {
                 e.getStackTrace();
             }
         }
-        sm3Result = wordsToBytes(VX);
+        return wordsToBytes(VX);
     }
 
-
-    private byte[] longToBytes(long num) {
+    /**
+     * long型转byte数组
+     *
+     * @param num 数
+     * @return byte数组
+     */
+    private static byte[] longToBytes(long num) {
         byte[] bytes = new byte[8];
         for (int i = 0; i < 8; i++) {
             int offset = (7 - i) * 8;
@@ -80,24 +102,43 @@ public class CryptoSM3 {
         return bytes;
     }
 
-    private byte[] wordsToBytes(int[] num) {
+    /**
+     * 字转byte数组
+     *
+     * @param words 字（长度为32的比特串）
+     * @return byte数组
+     */
+    private static byte[] wordsToBytes(int[] words) {
         byte[] bytes = new byte[32];
-        for (int i = 0; i < num.length; i++) {
+        for (int i = 0; i < words.length; i++) {
             for (int j = 0; j < 4; j++) {
                 int offset = (3 - j) * 8;
-                bytes[j + (i * 4)] = (byte) ((num[i] >>> offset) & 0xff);
+                bytes[j + (i * 4)] = (byte) ((words[i] >>> offset) & 0xff);
             }
         }
         return bytes;
     }
 
-    private int bytesToInt(byte[] bytes, int index) {
+    /**
+     * byte数组转字
+     *
+     * @param bytes byte数组
+     * @param index 数组下标
+     * @return 字
+     */
+    private static int bytesToWord(byte[] bytes, int index) {
         int result;
         result = ((bytes[index] & 0xff) << 24) | ((bytes[index + 1] & 0xff) << 16) | ((bytes[index + 2] & 0xff) << 8) | ((bytes[index + 3] & 0xff));
         return result;
     }
 
-    private String bytesToHex(byte[] bytes) {
+    /**
+     * byte数组转16进制字符串
+     *
+     * @param bytes bytes数组
+     * @return 16进制字符串
+     */
+    public static String bytesToHexString(byte[] bytes) {
         char[] hexDigits = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'};
         StringBuffer buffer = new StringBuffer();
         for (byte b : bytes) {
@@ -109,14 +150,28 @@ public class CryptoSM3 {
         return buffer.toString();
     }
 
-    private byte[] bytesMerge(byte[] front, byte[] rear) {
+    /**
+     * 数组拼接
+     *
+     * @param front 拼接在前面的数组
+     * @param rear  拼接在后面的数组
+     * @return 拼接后的数组
+     */
+    private static byte[] bytesMerge(byte[] front, byte[] rear) {
         byte[] bytes = Arrays.copyOf(front, front.length + rear.length);
         System.arraycopy(rear, 0, bytes, front.length, rear.length);
         return bytes;
     }
 
-    private int[] CF(int[] VI, int[] message) {
-        int[][] wx = extendMessage(message);
+    /**
+     * 压缩函数
+     *
+     * @param VI   记录压缩函数寄存器的初态
+     * @param word 中间值
+     * @return 压缩后结果
+     */
+    private static int[] CF(int[] VI, int[] word) {
+        int[][] wx = extendMessage(word);
         int[] w = wx[0];
         int[] w1 = wx[1];
         int[] result = new int[8];
@@ -154,7 +209,13 @@ public class CryptoSM3 {
         return result;
     }
 
-    private int T(int j) {
+    /**
+     * 常量，随j变化而变化
+     *
+     * @param j 组数
+     * @return 结果
+     */
+    private static int T(int j) {
         if (j <= 15) {
             return 0x79cc4519;
         } else {
@@ -162,7 +223,16 @@ public class CryptoSM3 {
         }
     }
 
-    private int FF(int x, int y, int z, int j) {
+    /**
+     * 布尔函数
+     *
+     * @param x 待运算数
+     * @param y 待运算数
+     * @param z 待运算数
+     * @param j 组数
+     * @return 运算结果
+     */
+    private static int FF(int x, int y, int z, int j) {
         int result = 0;
         if (j >= 0 && j <= 15) {
             result = x ^ y ^ z;
@@ -172,7 +242,16 @@ public class CryptoSM3 {
         return result;
     }
 
-    private int GG(int x, int y, int z, int j) {
+    /**
+     * 布尔函数
+     *
+     * @param x 待运算数
+     * @param y 待运算数
+     * @param z 待运算数
+     * @param j 待运算数
+     * @return 运算结果
+     */
+    private static int GG(int x, int y, int z, int j) {
         int result = 0;
         if (j >= 0 && j <= 15) {
             result = x ^ y ^ z;
@@ -182,15 +261,34 @@ public class CryptoSM3 {
         return result;
     }
 
+    /**
+     * 旋转左移位运算
+     *
+     * @param x 待运算数
+     * @param n 变化量
+     * @return 旋转左移位运算结果
+     */
     private static int CircleLeftShift(int x, int n) {
         return (x << n) | (x >>> (32 - n));
     }
 
-    private int P0(int x) {
+    /**
+     * 压缩函数中的置换函数
+     *
+     * @param x 被置换数
+     * @return 置换结果
+     */
+    private static int P0(int x) {
         return x ^ CircleLeftShift(x, 9) ^ CircleLeftShift(x, 17);
     }
 
-    private int P1(int x) {
+    /**
+     * 消息扩展中的置换函数
+     *
+     * @param x 被置换数
+     * @return 置换结果
+     */
+    private static int P1(int x) {
         return x ^ CircleLeftShift(x, 15) ^ CircleLeftShift(x, 23);
     }
 }
